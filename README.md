@@ -536,7 +536,7 @@ Host
 # Team
 
 * **fairchecker** — Backend / DSP / Mathematics
-Projectshiiish** — Frontend / GUI / JUCE
+* **okeshiiish** — Frontend / GUI / JUCE
 * **shugarm** — Integration / Testing / QA
 
 ---
