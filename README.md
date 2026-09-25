@@ -78,7 +78,7 @@
 | Участник        | Основная зона ответственности                          |
 | --------------- | ------------------------------------------------------ |
 | **fairchecker** | Backend, DSP, основная математика, базовый фреймворк   |
-| **okeiiish**    | Frontend, GUI, JUCE и взаимодействие с JUCE API        |
+| **okeshiiish**    | Frontend, GUI, JUCE и взаимодействие с JUCE API        |
 | **shugarm**     | Integration, соединение frontend/backend, тестирование |
 
 ### fairchecker — Backend / DSP
@@ -92,7 +92,7 @@
 * базовые интерфейсы между DSP и остальными частями проекта;
 * общую backend-архитектуру.
 
-### okeiiish — Frontend / JUCE
+### okeshiiish — Frontend / JUCE
 
 Отвечает за:
 
@@ -536,7 +536,7 @@ Host
 # Team
 
 * **fairchecker** — Backend / DSP / Mathematics
-* **okeiiish** — Frontend / GUI / JUCE
+Projectshiiish** — Frontend / GUI / JUCE
 * **shugarm** — Integration / Testing / QA
 
 ---
