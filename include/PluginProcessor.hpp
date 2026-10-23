@@ -1,5 +1,8 @@
 #pragma once
+
 #include <JuceHeader.h>
+
+#include "Synthesiser.hpp"
 
 class CresizerAudioProcessor : public juce::AudioProcessor
 {
@@ -27,5 +30,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
 private:
+    Synthesiser synthesiser_;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CresizerAudioProcessor)
 };

@@ -1,30 +1,57 @@
 #include "Oscillator.hpp"
 
-void Ocillator::prepare(double sampleRate, int samplesPerBlock){
-    sample_rate_ = sampleRate;
-    samples_per_block_ = samplesPerBlock;
+#include "Sinewave.hpp"
+
+Oscillator::Oscillator()
+    : waveform_(std::make_unique<Sinewave>())
+{
+    updatePhaseIncrement();
 }
 
-void Oscillator::setFrequency(double frequency){
+void Oscillator::prepare(double sampleRate)
+{
+    sample_rate_ = sampleRate;
+    updatePhaseIncrement();
+}
+
+void Oscillator::setFrequency(double frequency)
+{
     frequency_ = frequency;
     updatePhaseIncrement();
 }
 
-float Oscillator::getNextSample(){
-    phase_ += phase_increment_;
-    if (phase >= juce::MathConstants<double>::twoPi)
-        phase -= juce::MathConstants<double>::twoPi;
-    return waveform_.processPhase(phase_);
+void Oscillator::setWaveform(std::unique_ptr<Waveform> newWaveform)
+{
+    if (newWaveform != nullptr)
+        waveform_ = std::move(newWaveform);
 }
 
-void Ocillator::processBlock(juce::AudioBuffer<float>& buffer)
+void Oscillator::updatePhaseIncrement()
 {
-    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+    phase_increment_ = (juce::MathConstants<double>::twoPi * frequency_) / sample_rate_;
+}
+
+float Oscillator::getNextSample()
+{
+    const double value = waveform_ != nullptr ? waveform_->calculate(phase_) : 0.0;
+
+    phase_ += phase_increment_;
+    if (phase_ >= juce::MathConstants<double>::twoPi)
+        phase_ -= juce::MathConstants<double>::twoPi;
+
+    return static_cast<float>(value);
+}
+
+void Oscillator::processBlock(juce::AudioBuffer<float>& buffer)
+{
+    const auto numSamples = buffer.getNumSamples();
+    const auto numChannels = buffer.getNumChannels();
+
+    for (int sample = 0; sample < numSamples; ++sample)
     {
-        auto* channelData = buffer.getWritePointer(channel);
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
-        {
-            channelData[sample] = getNextSample();
-        }
+        const auto value = getNextSample();
+
+        for (int channel = 0; channel < numChannels; ++channel)
+            buffer.setSample(channel, sample, value);
     }
 }

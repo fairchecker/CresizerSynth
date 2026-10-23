@@ -6,15 +6,25 @@ CresizerAudioProcessor::CresizerAudioProcessor()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
+    for (int i = 0; i < 8; ++i)
+        synthesiser_.addVoice (std::make_unique<SynthesiserVoice>());
 }
 
-void CresizerAudioProcessor::prepareToPlay (double, int) {}
-void CresizerAudioProcessor::releaseResources() {}
-void CresizerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void CresizerAudioProcessor::prepareToPlay (double sampleRate, int)
 {
-    // Пропускаем звук как есть
-    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
-        buffer.clear(channel, 0, buffer.getNumSamples());
+    synthesiser_.prepare (sampleRate);
+}
+
+void CresizerAudioProcessor::releaseResources()
+{
+    synthesiser_.stopAllNotes();
+}
+
+void CresizerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    juce::ScopedNoDenormals noDenormals;
+
+    synthesiser_.processBlock (buffer, midiMessages);
 }
 
 juce::AudioProcessorEditor* CresizerAudioProcessor::createEditor()

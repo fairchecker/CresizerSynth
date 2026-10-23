@@ -31,6 +31,10 @@ target_compile_definitions(Cresizer
 target_sources(Cresizer PRIVATE
     src/PluginProcessor.cpp
     src/PluginEditor.cpp
+    src/Oscillator.cpp
+    src/Sinewave.cpp
+    src/Synthesiser.cpp
+    src/SynthesiserVoice.cpp
 )
 
 target_include_directories(Cresizer PUBLIC

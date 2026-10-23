@@ -1,6 +1,8 @@
-using "Sinewave.hpp"
-using <cmath>
+#include "Sinewave.hpp"
 
-double Sinewave::calculate(double phase){
+#include <cmath>
+
+double Sinewave::calculate(double phase) const
+{
     return std::sin(phase);
 }
