@@ -21,6 +21,8 @@ public:
 
 private:
     Oscillator oscillator_;
-    juce::SmoothedValue<float> gain_;
+    Envelope envelope_;
+    Envelope::Parameters envParams_;
+    float velocity_ = 0.0f;
     int currentNote_ = -1;
 };
