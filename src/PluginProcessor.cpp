@@ -6,8 +6,7 @@ CresizerAudioProcessor::CresizerAudioProcessor()
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
-    for (int i = 0; i < 8; ++i)
-        synthesiser_.addVoice (std::make_unique<SynthesiserVoice>());
+    synthesiser_.setNumVoices (8);
 }
 
 void CresizerAudioProcessor::prepareToPlay (double sampleRate, int)

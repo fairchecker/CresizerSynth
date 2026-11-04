@@ -14,7 +14,6 @@ public:
     void setFrequency(double newFrequency);
     void setWaveform(std::unique_ptr<Waveform> newWaveform);
     float getNextSample();
-    void processBlock(juce::AudioBuffer<float>& buffer);
 
 private:
     double phase_ = 0.0;

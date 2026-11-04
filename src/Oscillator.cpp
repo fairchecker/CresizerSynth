@@ -41,17 +41,3 @@ float Oscillator::getNextSample()
 
     return static_cast<float>(value);
 }
-
-void Oscillator::processBlock(juce::AudioBuffer<float>& buffer)
-{
-    const auto numSamples = buffer.getNumSamples();
-    const auto numChannels = buffer.getNumChannels();
-
-    for (int sample = 0; sample < numSamples; ++sample)
-    {
-        const auto value = getNextSample();
-
-        for (int channel = 0; channel < numChannels; ++channel)
-            buffer.setSample(channel, sample, value);
-    }
-}
