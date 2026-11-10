@@ -37,6 +37,8 @@ target_sources(Cresizer PRIVATE
     src/Envelope.cpp
     src/Voice.cpp
     src/Synthesiser.cpp
+    src/params/ParameterLayout.cpp
+    src/integration/ParameterBridge.cpp
 )
 
 target_include_directories(Cresizer PUBLIC
@@ -49,3 +51,14 @@ target_link_libraries(Cresizer PRIVATE
 )
 
 juce_generate_juce_header(Cresizer)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(CresizerTests tests/dsp_tests.cpp)
+    target_include_directories(CresizerTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests
+        ${CMAKE_BINARY_DIR}/Cresizer_artefacts/JuceLibraryCode
+    )
+    target_link_libraries(CresizerTests PRIVATE Cresizer juce::juce_audio_utils)
+    add_test(NAME CresizerTests COMMAND CresizerTests)
+endif()

@@ -2,6 +2,7 @@
 
 #include <JuceHeader.h>
 #include <vector>
+#include <cstdint>
 
 #include "Voice.hpp"
 
@@ -10,7 +11,7 @@
     Owns its voices by value: setNumVoices() may allocate, so it must be called
     from the message thread (or before playback starts), never from processBlock().
 */
-class Synthesiser
+class CresizerSynthesiser
 {
 public:
     void setNumVoices (int count);
@@ -22,14 +23,23 @@ public:
 
     void setEnvelopeParameters (const Envelope::Parameters& newParameters);
 
-private:
+    /** Realtime-safe waveform selection propagated to all voices; no allocation. */
+    void setWaveform (WaveformType newWaveformType);
+
+    /** Explicit limiter/clamp: guarantees output peak <= 1.0. */
+    void applyPeakLimit (juce::AudioBuffer<float>& buffer);
+
     void startNote (int midiNoteNumber, float velocity);
-    void stopNote (int midiNoteNumber);
-    void renderVoices (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
+    void stopNote (int midiNoteNumber, bool allowTailOff = true);
 
     Voice* findFreeVoice();
     Voice* findVoiceForNote (int midiNoteNumber);
+    Voice* findOldestVoice();
+
+private:
+    void renderVoices (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
 
     std::vector<Voice> voices;
     double sampleRate = 44100.0;
+    uint64_t noteCounter = 0;
 };

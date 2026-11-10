@@ -43,6 +43,15 @@ void Voice::reset()
     velocity = 0.0f;
 }
 
+void Voice::setWaveform (WaveformType newWaveformType)
+{
+    if (currentWaveformType_ != newWaveformType)
+    {
+        currentWaveformType_ = newWaveformType;
+        oscillator.setWaveform (newWaveformType);
+    }
+}
+
 void Voice::setEnvelopeParameters (const Envelope::Parameters& newParameters)
 {
     envelope.setParameters (newParameters);

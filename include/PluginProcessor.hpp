@@ -3,6 +3,8 @@
 #include <JuceHeader.h>
 
 #include "Synthesiser.hpp"
+#include "params/ParameterLayout.hpp"
+#include "integration/ParameterBridge.hpp"
 
 class CresizerAudioProcessor : public juce::AudioProcessor
 {
@@ -29,8 +31,15 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    /** GUI uses attachments / host-notifying edits, not DSP setters. */
+    juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
+    const juce::AudioProcessorValueTreeState& getAPVTS() const noexcept { return apvts; }
+
 private:
-    Synthesiser synthesiser_;
+    juce::AudioProcessorValueTreeState apvts;   // ОБЯЗАТЕЛЬНО объявлен раньше bridge
+    ParameterBridge bridge;
+    CresizerSynthesiser synthesiser_;
+    juce::SmoothedValue<float> masterGain;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CresizerAudioProcessor)
 };

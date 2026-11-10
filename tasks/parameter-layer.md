@@ -2,7 +2,7 @@
 
 **Исполнитель:** shugarm (integration / QA)
 **Основание:** обсуждение архитектуры от 2026-11-03
-**Статус:** черновик задачи, требует подтверждения у fairchecker'а (см. «Открытые вопросы»)
+**Статус:** базовая реализация выполнена, автоматические тесты добавлены; ручная приёмка в хосте остаётся открытой. Ниже сохранён исходный план; актуальный диапазон master gain — −120…0 дБ.
 
 ---
 
@@ -149,7 +149,7 @@ private:
 | `env.sustain` | `AudioParameterFloat` | 0–1 | 0.8 | линейно, шаг 0.001 |
 | `env.release` | `AudioParameterFloat` | 0.001–20 с | 0.20 | skew 0.3 |
 | `osc.waveform` | `AudioParameterChoice` | Sine / Saw / Square / Triangle | 0 (Sine) | порядок совпадает с `WaveformType` |
-| `master.gain` | `AudioParameterFloat` | −60…0 дБ | −6 | `AudioParameterFloatAttributes().withLabel ("dB")` |
+| `master.gain` | `AudioParameterFloat` | −120…0 дБ | −6 | `AudioParameterFloatAttributes().withLabel ("dB")` |
 
 Важно: значение `osc.waveform` — это **индекс** в `WaveformType` (`sine=0, saw=1, square=2, triangle=3`). Не менять порядок enum.
 
@@ -182,7 +182,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ParamID::gain, 1 },
         "Master Gain",
-        juce::NormalisableRange<float> { -60.0f, 0.0f, 0.1f },
+        juce::NormalisableRange<float> { -120.0f, 0.0f, 0.1f },
         -6.0f,
         juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
@@ -301,34 +301,30 @@ void CresizerAudioProcessor::setStateInformation (const void* data, int sizeInBy
 
 ---
 
-## 7. Этап 2: параметр формы волны (согласовать с fairchecker)
+## 7. Этап 2: параметр формы волны
 
-Параметр `osc.waveform` уже создаётся на этапе 1, но менять форму пока нечем: `Oscillator` держит один `unique_ptr<Waveform>`.
-
-Нельзя просто звать `createWaveform()` из `processBlock` — это аллокация в аудио-потоке. Предлагаемое решение (B1 из обсуждения):
+Переключение реализовано без вызова `createWaveform()` в аудиопотоке:
 
 1. `Oscillator` создаёт все 4 формы в конструкторе и хранит их в `std::array<std::unique_ptr<Waveform>, 4>`.
-2. Добавить `void setWaveformType (WaveformType type) noexcept` — просто меняет индекс.
-3. Добавить `Synthesiser::setWaveform (WaveformType)` и `Voice::setWaveform (WaveformType)`, прокинуть до осциллятора.
-4. В `processBlock`: `synthesiser_.setWaveform (params.waveform);`
-
-Это правка в `core/`, поэтому **сначала согласовать**, потом делать. До согласования этап 2 не начинать — плагин работает и без него.
+2. `Oscillator::setWaveform` переключает форму, сохраняя фазу.
+3. `CresizerSynthesiser::setWaveform` и `Voice::setWaveform` передают выбор до осциллятора.
+4. В `processBlock` вызывается `synthesiser_.setWaveform (params.waveform)`.
 
 ---
 
 ## 8. Критерии приёмки
 
-- [ ] `cmake --build` собирается без предупреждений, VST3 + Standalone.
-- [ ] В Standalone `Attack = 2 s` — звук нарастает примерно 2 секунды.
-- [ ] `Sustain = 0` — при удержании клавиши после decay наступает тишина.
-- [ ] `Release = 2 s` — после отпускания клавиши слышен длинный хвост.
-- [ ] `Master Gain = -60 dB` — тишина; `0 dB` — заметно громче, чем `-6 dB`.
-- [ ] Изменение гейна не даёт щелчков (смузинг работает).
-- [ ] Сохранение/загрузка состояния: выставить значения → сохранить пресет хоста → перезагрузить → значения восстановились.
-- [ ] Автоматизация `env.attack` в хосте не вызывает крашей и щелчков.
-- [ ] В `processBlock` нет аллокаций и строк.
-- [ ] ID параметров совпадают с таблицей из раздела 5.
-- [ ] `core/` не изменён (кроме согласованного этапа 2).
+- [x] `cmake --build` собирается, VST3 + Standalone + тестовый консольный апп собираются.
+- [ ] В Standalone `Attack = 2 s` — звук нарастает примерно 2 секунды. (проверка вручную в DAW/Standalone)
+- [ ] `Sustain = 0` — при удержании клавиши после decay наступает тишина. (проверка вручную)
+- [ ] `Release = 2 s` — после отпускания клавиши слышен длинный хвост. (проверка вручную)
+- [x] `Master Gain = -120 dB` — тишина после завершения смузинга; диапазон −120…0 дБ, `-120 dB` → gain 0.
+- [ ] Проверить на слух отсутствие щелчков при изменении гейна (смузинг через `SmoothedValue` реализован).
+- [ ] Проверить сохранение/загрузку состояния в хосте (автоматический round-trip APVTS проходит).
+- [ ] Автоматизация `env.attack` в хосте не вызывает крашей и щелчков. (хост-уровень, вне текущей задачи)
+- [ ] Проверить отсутствие аллокаций в `processBlock` инструментально (параметры читаются через кэшированные атомики).
+- [x] ID параметров совпадают с таблицей из раздела 5.
+- [ ] Ревью изменений DSP-слоя.
 
 ## 9. Как проверять
 

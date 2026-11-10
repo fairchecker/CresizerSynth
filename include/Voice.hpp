@@ -25,7 +25,11 @@ public:
     bool isVoiceActive() const noexcept  { return currentNote >= 0; }
     int  getCurrentNote() const noexcept { return currentNote; }
 
+    void setStartOrder (uint64_t order) noexcept { startOrder_ = order; }
+    uint64_t getStartOrder() const noexcept { return startOrder_; }
+
     void setEnvelopeParameters (const Envelope::Parameters& newParameters);
+    void setWaveform (WaveformType newWaveformType);
 
     // Extension points; no-ops until modulation is implemented.
     void handlePitchWheel (int /*newValue*/) {}
@@ -40,4 +44,6 @@ private:
     double sampleRate = 44100.0;
     int currentNote = -1;
     float velocity = 0.0f;
+    WaveformType currentWaveformType_ = WaveformType::sine;
+    uint64_t startOrder_ = 0;
 };

@@ -4,5 +4,5 @@
 
 class Sinewave : public Waveform {
 public:
-    double calculate(double phase) const override;
+    double calculate(double phase, double phaseIncrement) const override;
 };

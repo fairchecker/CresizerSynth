@@ -268,10 +268,10 @@ CresizerSynth/
 * [x] Создать репозиторий
 * [x] Подключить JUCE
 * [x] Настроить CMake
-* [ ] Зафиксировать используемую версию JUCE
+* [x] Зафиксировать используемую версию JUCE
 * [ ] Проверить сборку на всех рабочих окружениях
-* [ ] Определить базовую архитектуру
-* [ ] Определить правила взаимодействия между слоями
+* [x] Определить базовую архитектуру
+* [x] Определить правила взаимодействия между слоями
 
 ---
 
@@ -279,11 +279,11 @@ CresizerSynth/
 
 **Цель:** получить минимальный работающий звуковой движок без сложного GUI.
 
-* [ ] Базовый audio processing pipeline
-* [ ] Oscillator
-* [ ] Основные waveform
-* [ ] Frequency / amplitude control
-* [ ] Envelope
+* [x] Базовый audio processing pipeline
+* [x] Oscillator
+* [x] Основные waveform (Sine / Saw / Square / Triangle + anti-alias)
+* [x] Frequency / amplitude control
+* [x] Envelope
 * [ ] Базовый filter
 * [ ] Стабильная обработка audio buffer
 * [ ] Проверка DSP-компонентов независимо от GUI
@@ -304,13 +304,13 @@ MIDI / parameters
 
 **Цель:** определить единый способ управления состоянием синтезатора.
 
-* [ ] Описать все основные параметры
-* [ ] Определить диапазоны параметров
-* [ ] Нормализация параметров
-* [ ] Parameter → DSP communication
-* [ ] Parameter → GUI communication
-* [ ] Синхронизация GUI и внутреннего состояния
-* [ ] Подготовить систему сохранения состояния
+* [x] Описать все основные параметры
+* [x] Определить диапазоны параметров (gain -120..0 dB)
+* [x] Нормализация параметров
+* [x] Parameter → DSP communication (ParameterBridge)
+* [x] Parameter → GUI communication (APVTS attachments)
+* [x] Синхронизация GUI и внутреннего состояния
+* [x] Подготовить систему сохранения состояния (APVTS save/load)
 
 ---
 
@@ -318,16 +318,16 @@ MIDI / parameters
 
 **Цель:** создать полноценный интерфейс синтезатора.
 
-* [ ] Основной layout
-* [ ] Oscillator controls
-* [ ] Envelope controls
+* [x] Основной layout
+* [x] Oscillator controls
+* [x] Envelope controls
 * [ ] Filter controls
-* [ ] Master controls
-* [ ] Knobs/sliders
-* [ ] Value display
-* [ ] Visual feedback
-* [ ] Обработка пользовательского ввода
-* [ ] Привязка UI к parameter system
+* [x] Master controls
+* [x] Knobs/sliders
+* [x] Value display
+* [x] Visual feedback
+* [x] Обработка пользовательского ввода
+* [x] Привязка UI к parameter system
 
 ---
 
@@ -354,12 +354,12 @@ MIDI / parameters
     Audio
 ```
 
-* [ ] GUI → parameters
-* [ ] Parameters → DSP
+* [x] GUI → parameters (APVTS accessor public for future GUI)
+* [x] Parameters → DSP (ParameterBridge reads cached atomics)
 * [ ] MIDI → synthesizer
 * [ ] Audio → host
 * [ ] Проверка automation
-* [ ] Проверка state save/load
+* [ ] Проверка state save/load в хосте (автоматический round-trip APVTS есть)
 * [ ] Устранение race conditions и проблем синхронизации
 * [ ] Проверка поведения в реальном host
 
@@ -381,7 +381,7 @@ MIDI / parameters
 * [ ] Reverb
 * [ ] Chorus
 * [ ] Additional modulation
-* [ ] Polyphony
+* [x] Polyphony (fixed-size, oldest voice stealing)
 * [ ] Unison
 * [ ] Portamento
 

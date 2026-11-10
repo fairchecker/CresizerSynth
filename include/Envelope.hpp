@@ -15,14 +15,27 @@ public:
         float decay   = 0.10f;
         float sustain = 0.80f;
         float release = 0.20f;
+
+        bool operator== (const Parameters& other) const noexcept
+        {
+            return attack == other.attack
+                && decay == other.decay
+                && sustain == other.sustain
+                && release == other.release;
+        }
+
+        bool operator!= (const Parameters& other) const noexcept
+        {
+            return !(*this == other);
+        }
     };
 
-    Envelope() { setParameters (parameters); }
+    Envelope() { adsr.setParameters ({ parameters.attack, parameters.decay, parameters.sustain, parameters.release }); }
 
     /** Called once before rendering; sets the rate used by juce::ADSR. */
     void prepare (double sampleRate);
 
-    /** Applies new ADSR values. Safe to call from the message thread. */
+    /** Apply on the audio thread, or while rendering is stopped. */
     void setParameters (const Parameters& newParameters);
 
     void noteOn()  { adsr.noteOn(); }
