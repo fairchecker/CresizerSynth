@@ -1,33 +1,45 @@
 #pragma once
 
 #include <JuceHeader.h>
-#include <memory>
 #include <vector>
+#include <cstdint>
 
-#include "SynthesiserVoice.hpp"
+#include "Voice.hpp"
 
-class SinewaveSound : public juce::SynthesiserSound
+/** Fixed-size polyphonic synthesiser.
+
+    Owns its voices by value: setNumVoices() may allocate, so it must be called
+    from the message thread (or before playback starts), never from processBlock().
+*/
+class CresizerSynthesiser
 {
 public:
-    bool appliesToNote(int) override { return true; }
-    bool appliesToChannel(int) override { return true; }
-};
+    void setNumVoices (int count);
+    void prepare (double newSampleRate);
+    void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages);
 
-class Synthesiser
-{
-public:
-    void addVoice(std::unique_ptr<SynthesiserVoice> voice);
-    void prepare(double sampleRate);
-    void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages);
-    void stopAllNotes();
+    /** allowTailOff == true lets the envelope release; false cuts the sound. */
+    void stopAllNotes (bool allowTailOff = false);
+
+    void setEnvelopeParameters (const Envelope::Parameters& newParameters);
+
+    /** Realtime-safe waveform selection propagated to all voices; no allocation. */
+    void setWaveform (WaveformType newWaveformType);
+
+    /** Explicit limiter/clamp: guarantees output peak <= 1.0. */
+    void applyPeakLimit (juce::AudioBuffer<float>& buffer);
+
+    void startNote (int midiNoteNumber, float velocity);
+    void stopNote (int midiNoteNumber, bool allowTailOff = true);
+
+    Voice* findFreeVoice();
+    Voice* findVoiceForNote (int midiNoteNumber);
+    Voice* findOldestVoice();
 
 private:
-    void startNote(int midiNoteNumber, float velocity);
-    void stopNote(int midiNoteNumber);
-    void renderVoices(juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
-    SynthesiserVoice* findFreeVoice();
-    SynthesiserVoice* findVoiceForNote(int midiNoteNumber);
+    void renderVoices (juce::AudioBuffer<float>& buffer, int startSample, int numSamples);
 
-    std::vector<std::unique_ptr<SynthesiserVoice>> voices_;
-    SinewaveSound sound_;
+    std::vector<Voice> voices;
+    double sampleRate = 44100.0;
+    uint64_t noteCounter = 0;
 };

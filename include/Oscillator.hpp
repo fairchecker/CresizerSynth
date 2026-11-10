@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
 #include <memory>
 
 #include "Waveform.hpp"
@@ -12,16 +13,19 @@ public:
     void prepare(double sampleRate);
     void reset() { phase_ = 0.0; }
     void setFrequency(double newFrequency);
-    void setWaveform(std::unique_ptr<Waveform> newWaveform);
+    /** Realtime-safe: switches waveform without allocation or phase reset. */
+    void setWaveform(WaveformType newWaveformType);
+    WaveformType getWaveform() const noexcept { return currentWaveformType_; }
     float getNextSample();
-    void processBlock(juce::AudioBuffer<float>& buffer);
 
 private:
     double phase_ = 0.0;
     double sample_rate_ = 44100.0;
     double frequency_ = 440.0;
     double phase_increment_ = 0.0;
-    std::unique_ptr<Waveform> waveform_;
+
+    std::array<std::unique_ptr<Waveform>, 4> waveforms_;
+    WaveformType currentWaveformType_ = WaveformType::sine;
 
     void updatePhaseIncrement();
 };
