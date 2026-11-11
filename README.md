@@ -321,13 +321,21 @@ MIDI / parameters
 * [x] Основной layout
 * [x] Oscillator controls
 * [x] Envelope controls
-* [ ] Filter controls
+* [ ] Filter controls (юай для фильтров — см. ветку feature-ui-piano)
 * [x] Master controls
 * [x] Knobs/sliders
 * [x] Value display
 * [x] Visual feedback
 * [x] Обработка пользовательского ввода
 * [x] Привязка UI к parameter system
+* [ ] Визуальное отображение клавиш пианино снизу
+
+### Ручные тесты (приёмка, пройдены)
+
+* [x] Щелчки гейна — отсутствие щелчков при изменении гейна (`SmoothedValue`, проверено на слух)
+* [x] Сохранение пресета в хосте — round-trip состояния APVTS
+* [x] Автоматизация — автоматизация параметров без крашей и щелчков
+* [x] Инструментальная проверка — отсутствие аллокаций в `processBlock` (кэшированные атомики)
 
 ---
 
