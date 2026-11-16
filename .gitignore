@@ -21,6 +21,8 @@ Thumbs.db
 .idea/
 .vscode/
 
+.omp/
+
 *.exe
 *.dll
 *.so
