@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstdint>
 #include <new>
 
 #if JUCE_MSVC
@@ -930,6 +931,109 @@ void testAllNotesOffCancelsPendingSteal()
     printf ("  PASS: All-notes-off cancels pending steal\n");
 }
 
+// ============================================================
+// Test 22: Second-order slope: 12 dB/octave away from the cutoff.
+// ============================================================
+void testFilterSlope()
+{
+    printf ("Test 22: Filter slope ...\n");
+
+    constexpr float sampleRate = 48000.0f;
+    constexpr int numSamples = 16384;
+
+    auto magnitude = [&] (FilterType type, float cutoffHz, float frequencyHz)
+    {
+        Filter filter;
+        filter.prepare (sampleRate);
+        filter.setParameters ({ cutoffHz, 0.0f, type });
+        filter.reset();
+
+        std::vector<float> output (numSamples);
+        for (int i = 0; i < numSamples; ++i)
+            output[i] = filter.processSample (std::sin (2.0f * juce::MathConstants<float>::pi
+                                                        * frequencyHz * static_cast<float> (i) / sampleRate));
+        return dftMagnitudeAt (output, frequencyHz, sampleRate);
+    };
+
+    const float cutoff = 1000.0f;
+    const float lowAtCutoff = magnitude (FilterType::lowpass, cutoff, cutoff);
+    const float lowAt4x = magnitude (FilterType::lowpass, cutoff, 4.0f * cutoff);
+    assert (lowAtCutoff > lowAt4x * 5.0f);      // ideal ratio ~11.3
+
+    const float highAtCutoff = magnitude (FilterType::highpass, cutoff, cutoff);
+    const float highAtQuarter = magnitude (FilterType::highpass, cutoff, cutoff / 4.0f);
+    assert (highAtCutoff > highAtQuarter * 5.0f);
+
+    printf ("  PASS: Filter slope\n");
+}
+
+// ============================================================
+// Test 23: Resonance gain at the cutoff rises monotonically with the knob.
+// ============================================================
+void testFilterResonanceMonotonic()
+{
+    printf ("Test 23: Resonance monotonic ...\n");
+
+    constexpr float sampleRate = 48000.0f;
+    constexpr int numSamples = 16384;
+    constexpr float cutoff = 1000.0f;
+
+    auto gainAtCutoff = [&] (float resonance)
+    {
+        Filter filter;
+        filter.prepare (sampleRate);
+        filter.setParameters ({ cutoff, resonance, FilterType::lowpass });
+        filter.reset();
+
+        std::vector<float> output (numSamples);
+        for (int i = 0; i < numSamples; ++i)
+            output[i] = filter.processSample (std::sin (2.0f * juce::MathConstants<float>::pi
+                                                        * cutoff * static_cast<float> (i) / sampleRate));
+        return dftMagnitudeAt (output, cutoff, sampleRate);
+    };
+
+    float previous = -1.0f;
+    for (float resonance : { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f })
+    {
+        const float gain = gainAtCutoff (resonance);
+        printf ("  res %.2f -> %f\n", resonance, gain);
+        assert (gain > previous);
+        previous = gain;
+    }
+
+    printf ("  PASS: Resonance monotonic\n");
+}
+
+// ============================================================
+// Test 24: Long noisy run at maximum resonance stays finite and bounded.
+// ============================================================
+void testFilterLongRunStability()
+{
+    printf ("Test 24: Filter long-run stability ...\n");
+
+    Filter filter;
+    filter.prepare (48000.0);
+    filter.setParameters ({ 150.0f, 1.0f, FilterType::lowpass });
+    filter.reset();
+
+    std::uint32_t seed = 1;
+    float peak = 0.0f;
+
+    for (int i = 0; i < 200000; ++i)
+    {
+        seed = seed * 1664525u + 1013904223u;
+        const float noise = static_cast<float> (seed >> 8) / 8388608.0f - 1.0f;
+        const float out = filter.processSample (noise);
+        assert (std::isfinite (out));
+        peak = std::max (peak, std::abs (out));
+    }
+
+    printf ("  peak = %f\n", peak);
+    assert (peak < 200.0f);
+
+    printf ("  PASS: Filter long-run stability\n");
+}
+
 int main()
 {
     printf ("=== CresizerSynth DSP Tests ===\n\n");
@@ -960,6 +1064,9 @@ int main()
     testNoClickOnRetriggerOrSteal ();
     testParameterAutomationIsClickFree ();
     testAllNotesOffCancelsPendingSteal ();
+    testFilterSlope ();
+    testFilterResonanceMonotonic ();
+    testFilterLongRunStability ();
 
     printf ("\n=== All tests completed ===\n");
     return 0;
