@@ -6,10 +6,16 @@
 #include "params/ParameterIDs.hpp"
 
 #include <JuceHeader.h>
+#include <atomic>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <new>
+
+#if JUCE_MSVC
+ #include <malloc.h>
+#endif
 
 // Unlike assert(), checks remain active in Release builds.
 #undef assert
@@ -195,12 +201,23 @@ void testVoiceStealingAndRetrigger()
     CresizerSynthesiser synth;
     assert (synth.findFreeVoice() == nullptr);
     synth.setNumVoices (2);
+    synth.prepare (48000.0);
     synth.startNote (60, 1.0f);
     synth.startNote (62, 1.0f);
-    synth.startNote (64, 1.0f);
+    synth.startNote (64, 1.0f);   // steals 60: fade-out, then 64 starts
+
+    juce::AudioBuffer<float> buffer (1, 512);
+    buffer.clear();
+    juce::MidiBuffer empty;
+    synth.processBlock (buffer, empty);
+
     assert (synth.findVoiceForNote (60) == nullptr);
+    assert (synth.findVoiceForNote (64) != nullptr);
     assert (synth.findVoiceForNote (62) != nullptr);
+
+    // Retrigger keeps the same voice alive instead of cutting it.
     synth.startNote (62, 1.0f);
+    assert (synth.findVoiceForNote (62) != nullptr);
     synth.stopNote (62, false);
     assert (synth.findVoiceForNote (62) == nullptr);
 }
@@ -235,28 +252,35 @@ void testSawAliasing()
 }
 
 // ============================================================
-// Test 7: Peak limiting guarantees peak <= 1.0.
+// Test 7: Soft ceiling is transparent below the knee and bounded above it.
 // ============================================================
-void testPeakLimiting()
+void testSoftLimit()
 {
-    printf ("Test 7: Peak limiting ...\n");
+    printf ("Test 7: Soft ceiling ...\n");
 
     juce::AudioBuffer<float> buffer (2, 4);
     buffer.clear ();
-    buffer.getWritePointer (0)[0] = 1.5f;
-    buffer.getWritePointer (0)[1] = -1.5f;
-    buffer.getWritePointer (0)[2] = 0.5f;
-    buffer.getWritePointer (0)[3] = -0.5f;
+    buffer.getWritePointer (0)[0] = 0.5f;
+    buffer.getWritePointer (0)[1] = -0.6f;
+    buffer.getWritePointer (0)[2] = 1.5f;
+    buffer.getWritePointer (0)[3] = -3.0f;
 
     CresizerSynthesiser synth;
-    synth.applyPeakLimit (buffer);
+    synth.applySoftLimit (buffer);
 
-    assert (std::abs (buffer.getWritePointer (0)[0] - 1.0f) < 1e-6f);
-    assert (std::abs (buffer.getWritePointer (0)[1] - (-1.0f)) < 1e-6f);
-    assert (std::abs (buffer.getWritePointer (0)[2] - 0.5f) < 1e-6f);
-    assert (std::abs (buffer.getWritePointer (0)[3] - (-0.5f)) < 1e-6f);
+    const float* data = buffer.getWritePointer (0);
+    assert (std::abs (data[0] - 0.5f) < 1e-6f);
+    assert (std::abs (data[1] - (-0.6f)) < 1e-6f);
+    assert (data[2] > 0.7f && data[2] < 0.95f);
+    assert (data[3] <= -0.7f && data[3] >= -0.95f - 1e-4f);
+    assert (std::abs (data[3]) > std::abs (data[2]));
 
-    printf ("  PASS: Peak limiting\n");
+    // Idempotent and bounded: repeated passes never exceed the ceiling.
+    synth.applySoftLimit (buffer);
+    assert (std::abs (data[2]) < 0.95f);
+    assert (std::abs (data[3]) < 0.95f);
+
+    printf ("  PASS: Soft ceiling\n");
 }
 
 // ============================================================
@@ -321,6 +345,591 @@ void testVoiceStartStopCycle()
     printf ("  PASS: Voice start/stop cycle\n");
 }
 
+// ============================================================
+// Test 10: Filter passband/stopband for lowpass and highpass.
+// ============================================================
+void testFilterFrequencyResponse()
+{
+    printf ("Test 10: Filter frequency response ...\n");
+
+    constexpr float sampleRate = 48000.0f;
+    constexpr int numSamples = 16384;
+
+    auto run = [&] (FilterType type, float cutoffHz, const std::vector<float>& input)
+    {
+        Filter filter;
+        filter.prepare (sampleRate);
+        filter.setParameters ({ cutoffHz, 0.0f, type });
+        filter.reset();
+
+        std::vector<float> output (input.size());
+        for (size_t i = 0; i < input.size(); ++i)
+            output[i] = filter.processSample (input[i]);
+        return output;
+    };
+
+    std::vector<float> lowTone, highTone;
+    generateSine (lowTone, 200.0f, sampleRate, numSamples);
+    generateSine (highTone, 5000.0f, sampleRate, numSamples);
+
+    const float lowIn = dftMagnitudeAt (lowTone, 200.0f, sampleRate);
+    const float highIn = dftMagnitudeAt (highTone, 5000.0f, sampleRate);
+
+    // Lowpass at 500 Hz: 200 Hz passes, 5 kHz is attenuated.
+    const auto lpLow = run (FilterType::lowpass, 500.0f, lowTone);
+    const auto lpHigh = run (FilterType::lowpass, 500.0f, highTone);
+    assert (dftMagnitudeAt (lpLow, 200.0f, sampleRate) > lowIn * 0.7f);
+    assert (dftMagnitudeAt (lpHigh, 5000.0f, sampleRate) < highIn * 0.2f);
+
+    // Highpass at 2000 Hz: 200 Hz is attenuated, 5 kHz passes.
+    const auto hpLow = run (FilterType::highpass, 2000.0f, lowTone);
+    const auto hpHigh = run (FilterType::highpass, 2000.0f, highTone);
+    assert (dftMagnitudeAt (hpLow, 200.0f, sampleRate) < lowIn * 0.2f);
+    assert (dftMagnitudeAt (hpHigh, 5000.0f, sampleRate) > highIn * 0.7f);
+
+    printf ("  PASS: Filter frequency response\n");
+}
+
+// ============================================================
+// Test 10b: Disabled filter is a bit-exact bypass.
+// ============================================================
+void testFilterBypass()
+{
+    printf ("Test 10b: Filter bypass ...\n");
+
+    Filter filter;
+    filter.prepare (48000.0);
+    filter.setParameters ({ 300.0f, 0.9f, FilterType::lowpass, false });
+    filter.reset();
+
+    for (int i = 0; i < 512; ++i)
+    {
+        const float input = 0.3f * std::sin (2.0f * juce::MathConstants<float>::pi * 4000.0f
+                                             * static_cast<float> (i) / 48000.0f);
+        assert (filter.processSample (input) == input);
+    }
+
+    // Re-enabling starts from clean state, not the old tail.
+    filter.setParameters ({ 300.0f, 0.9f, FilterType::lowpass, true });
+    assert (std::isfinite (filter.processSample (1.0f)));
+
+    printf ("  PASS: Filter bypass\n");
+}
+
+// ============================================================
+// Test 11: Resonance raises the response at the cutoff frequency.
+// ============================================================
+void testFilterResonancePeak()
+{
+    printf ("Test 11: Filter resonance peak ...\n");
+
+    constexpr float sampleRate = 48000.0f;
+    constexpr int numSamples = 16384;
+
+    std::vector<float> tone;
+    generateSine (tone, 1000.0f, sampleRate, numSamples);
+
+    auto magnitudeAtCutoff = [&] (float resonance)
+    {
+        Filter filter;
+        filter.prepare (sampleRate);
+        filter.setParameters ({ 1000.0f, resonance, FilterType::lowpass });
+        filter.reset();
+
+        std::vector<float> output (tone.size());
+        for (size_t i = 0; i < tone.size(); ++i)
+            output[i] = filter.processSample (tone[i]);
+        return dftMagnitudeAt (output, 1000.0f, sampleRate);
+    };
+
+    const float flat = magnitudeAtCutoff (0.0f);      // Q = 0.707 -> gain 0.707 at fc
+    const float resonant = magnitudeAtCutoff (0.9f);  // Q ~ 18 -> gain ~18 at fc
+
+    printf ("  flat = %f, resonant = %f\n", flat, resonant);
+    assert (resonant > flat * 3.0f);
+    assert (resonant < 30.0f);
+
+    printf ("  PASS: Filter resonance peak\n");
+}
+
+// ============================================================
+// Test 12: DC response matches the filter type.
+// ============================================================
+void testFilterDcResponse()
+{
+    printf ("Test 12: Filter DC response ...\n");
+
+    auto dcOutput = [] (FilterType type)
+    {
+        Filter filter;
+        filter.prepare (48000.0);
+        filter.setParameters ({ 1000.0f, 0.0f, type });
+        filter.reset();
+
+        float output = 0.0f;
+        for (int i = 0; i < 48000; ++i)
+            output = filter.processSample (1.0f);
+        return output;
+    };
+
+    assert (std::abs (dcOutput (FilterType::lowpass) - 1.0f) < 0.01f);
+    assert (std::abs (dcOutput (FilterType::highpass)) < 0.01f);
+
+    printf ("  PASS: Filter DC response\n");
+}
+
+// ============================================================
+// Test 13: Stability at cutoff/resonance extremes, every type.
+// ============================================================
+void testFilterStabilityAtExtremes()
+{
+    printf ("Test 13: Filter stability at extremes ...\n");
+
+    constexpr float sampleRate = 44100.0f;
+    std::vector<float> tone;
+    generateSine (tone, 440.0f, sampleRate, 65536);
+
+    for (float cutoff : { 20.0f, 20000.0f })
+    {
+        for (float resonance : { 0.0f, 1.0f })
+        {
+            for (FilterType type : { FilterType::lowpass, FilterType::highpass })
+            {
+                Filter filter;
+                filter.prepare (sampleRate);
+                filter.setParameters ({ cutoff, resonance, type });
+                filter.reset();
+
+                float peak = 0.0f;
+                for (float sample : tone)
+                {
+                    const float out = filter.processSample (sample);
+                    assert (std::isfinite (out));
+                    peak = std::max (peak, std::abs (out));
+                }
+
+                printf ("  cutoff %.0f res %.1f type %d peak = %f\n",
+                        cutoff, resonance, static_cast<int> (type), peak);
+                assert (peak < 100.0f);
+            }
+        }
+    }
+
+    printf ("  PASS: Filter stability at extremes\n");
+}
+
+// ============================================================
+// Test 14: Cutoff sweeps stay continuous (no stepped output).
+// ============================================================
+void testFilterCutoffSweep()
+{
+    printf ("Test 14: Filter cutoff sweep continuity ...\n");
+
+    constexpr float sampleRate = 48000.0f;
+    constexpr int numSamples = 24000;
+
+    std::vector<float> tone;
+    generateSine (tone, 200.0f, sampleRate, numSamples, 0.5f);
+
+    Filter filter;
+    filter.prepare (sampleRate);
+    filter.setParameters ({ 200.0f, 0.3f, FilterType::lowpass });
+    filter.reset();
+
+    float previous = 0.0f;
+    float maxDelta = 0.0f;
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        if (i % 256 == 0)
+            filter.setParameters ({ ((i / 256) % 2 == 0) ? 200.0f : 4000.0f, 0.3f, FilterType::lowpass });
+
+        const float out = filter.processSample (tone[i]);
+        assert (std::isfinite (out));
+        maxDelta = std::max (maxDelta, std::abs (out - previous));
+        previous = out;
+    }
+
+    printf ("  max sample delta = %f\n", maxDelta);
+    assert (maxDelta < 0.25f);
+
+    printf ("  PASS: Filter cutoff sweep continuity\n");
+}
+
+// ============================================================
+// Test 15: Resonance mapping, APVTS -> bridge -> DSP, state round-trip.
+// ============================================================
+void testFilterParametersAndState()
+{
+    printf ("Test 15: Filter parameters, bridge and state ...\n");
+
+    assert (approxEqual (Filter::resonanceToQ (0.0f), 0.7071f, 1e-3f));
+    assert (approxEqual (Filter::resonanceToQ (1.0f), 20.0f, 1e-3f));
+
+    CresizerAudioProcessor processor;
+    auto& state = processor.getAPVTS();
+    auto set = [&] (const char* id, float value)
+    {
+        auto* parameter = state.getParameter (id);
+        assert (parameter != nullptr);
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+    };
+
+    set (ParamID::filterCutoff, 3500.0f);
+    set (ParamID::filterResonance, 0.8f);
+    set (ParamID::filterType, 1.0f);
+    set (ParamID::filterEnabled, 1.0f);
+
+    ParameterBridge bridge (state);
+    const auto params = bridge.read();
+    assert (std::abs (params.filter.cutoffHz - 3500.0f) < 0.01f);
+    assert (std::abs (params.filter.resonance - 0.8f) < 0.001f);
+    assert (params.filter.type == FilterType::highpass);
+    assert (params.filter.enabled);
+
+    juce::MemoryBlock data;
+    processor.getStateInformation (data);
+    assert (data.getSize() > 0);
+
+    CresizerAudioProcessor restored;
+    restored.setStateInformation (data.getData(), static_cast<int> (data.getSize()));
+    assert (std::abs (restored.getAPVTS().getRawParameterValue (ParamID::filterCutoff)->load() - 3500.0f) < 0.01f);
+    assert (std::abs (restored.getAPVTS().getRawParameterValue (ParamID::filterResonance)->load() - 0.8f) < 0.001f);
+    assert (restored.getAPVTS().getRawParameterValue (ParamID::filterType)->load() == 1.0f);
+    assert (restored.getAPVTS().getRawParameterValue (ParamID::filterEnabled)->load() == 1.0f);
+
+    printf ("  PASS: Filter parameters, bridge and state\n");
+}
+
+// ============================================================
+// Test 16: Filter is applied to the voice mix end to end.
+// ============================================================
+void testFilterThroughProcessor()
+{
+    printf ("Test 16: Filter through processor ...\n");
+
+    auto renderNote = [] (float cutoffHz)
+    {
+        CresizerAudioProcessor processor;
+        auto& state = processor.getAPVTS();
+
+        auto* cutoffParam = state.getParameter (ParamID::filterCutoff);
+        auto* resonanceParam = state.getParameter (ParamID::filterResonance);
+        auto* enabledParam = state.getParameter (ParamID::filterEnabled);
+        assert (cutoffParam != nullptr && resonanceParam != nullptr && enabledParam != nullptr);
+        cutoffParam->setValueNotifyingHost (cutoffParam->convertTo0to1 (cutoffHz));
+        resonanceParam->setValueNotifyingHost (resonanceParam->convertTo0to1 (0.0f));
+        enabledParam->setValueNotifyingHost (enabledParam->convertTo0to1 (1.0f));
+
+        processor.prepareToPlay (48000.0, 512);
+        juce::AudioBuffer<float> buffer (2, 4096);
+        buffer.clear();
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::noteOn (1, 84, 1.0f), 0);
+        processor.processBlock (buffer, midi);
+
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            for (int n = 0; n < buffer.getNumSamples(); ++n)
+                assert (std::isfinite (buffer.getWritePointer (ch)[n]));
+
+        return buffer.getMagnitude (0, buffer.getNumSamples());
+    };
+
+    const float closed = renderNote (20.0f);      // 1 kHz note below nothing: killed
+    const float open = renderNote (20000.0f);     // 1 kHz note passes
+
+    printf ("  closed = %f, open = %f\n", closed, open);
+    assert (open > 0.05f);
+    assert (closed < open * 0.1f);
+
+    printf ("  PASS: Filter through processor\n");
+}
+
+// ============================================================
+// Test 17: processBlock performs no heap allocation.
+// ============================================================
+namespace
+{
+    std::atomic<int> allocationCount { 0 };
+    std::atomic<bool> countingAllocations { false };
+}
+
+void* operator new (std::size_t size)
+{
+    if (countingAllocations.load (std::memory_order_relaxed))
+        allocationCount.fetch_add (1, std::memory_order_relaxed);
+
+    if (auto* memory = std::malloc (size))
+        return memory;
+    throw std::bad_alloc();
+}
+
+void* operator new[] (std::size_t size)
+{
+    return ::operator new (size);
+}
+
+void* operator new (std::size_t size, std::align_val_t alignment)
+{
+    if (countingAllocations.load (std::memory_order_relaxed))
+        allocationCount.fetch_add (1, std::memory_order_relaxed);
+
+   #if JUCE_MSVC
+    if (auto* memory = _aligned_malloc (size, static_cast<std::size_t> (alignment)))
+        return memory;
+   #else
+    const auto align = static_cast<std::size_t> (alignment);
+    if (auto* memory = std::aligned_alloc (align, (size + align - 1) / align * align))
+        return memory;
+   #endif
+
+    throw std::bad_alloc();
+}
+
+void* operator new[] (std::size_t size, std::align_val_t alignment)
+{
+    return ::operator new (size, alignment);
+}
+
+void operator delete (void* memory) noexcept { std::free (memory); }
+void operator delete[] (void* memory) noexcept { std::free (memory); }
+void operator delete (void* memory, std::size_t) noexcept { std::free (memory); }
+void operator delete[] (void* memory, std::size_t) noexcept { std::free (memory); }
+
+void operator delete (void* memory, std::align_val_t) noexcept
+{
+   #if JUCE_MSVC
+    _aligned_free (memory);
+   #else
+    std::free (memory);
+   #endif
+}
+
+void operator delete[] (void* memory, std::align_val_t alignment) noexcept
+{
+    ::operator delete (memory, alignment);
+}
+
+void operator delete (void* memory, std::size_t, std::align_val_t alignment) noexcept
+{
+    ::operator delete (memory, alignment);
+}
+
+void operator delete[] (void* memory, std::size_t, std::align_val_t alignment) noexcept
+{
+    ::operator delete (memory, alignment);
+}
+
+void testNoAllocationInProcessBlock()
+{
+    printf ("Test 17: No allocation in processBlock ...\n");
+
+    CresizerAudioProcessor processor;
+    processor.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::noteOn (1, 60, 1.0f), 0);
+    midi.addEvent (juce::MidiMessage::noteOff (1, 60), 200);
+
+    // Warm up lazy initialisation before measuring.
+    processor.processBlock (buffer, midi);
+
+    allocationCount.store (0);
+    countingAllocations.store (true);
+    processor.processBlock (buffer, midi);
+    countingAllocations.store (false);
+
+    printf ("  allocations = %d\n", allocationCount.load());
+    assert (allocationCount.load() == 0);
+
+    printf ("  PASS: No allocation in processBlock\n");
+}
+
+// ============================================================
+// Test 18: Default patch is open and an 8-voice chord never hits a hard rail.
+// ============================================================
+void testDefaultPatchAndHeadroom()
+{
+    printf ("Test 18: Default patch open, chord under ceiling ...\n");
+
+    CresizerAudioProcessor probe;
+    assert (probe.getAPVTS().getRawParameterValue (ParamID::filterEnabled)->load() == 0.0f);
+    assert (probe.getAPVTS().getRawParameterValue (ParamID::filterCutoff)->load() > 19999.0f);
+
+    auto render = [] (std::initializer_list<int> notes)
+    {
+        CresizerAudioProcessor processor;
+        auto* waveform = processor.getAPVTS().getParameter (ParamID::waveform);
+        assert (waveform != nullptr);
+        waveform->setValueNotifyingHost (waveform->convertTo0to1 (1.0f));
+
+        processor.prepareToPlay (48000.0, 512);
+        juce::AudioBuffer<float> buffer (1, 8192);
+        buffer.clear();
+        juce::MidiBuffer midi;
+        for (int note : notes)
+            midi.addEvent (juce::MidiMessage::noteOn (1, note, 1.0f), 0);
+        processor.processBlock (buffer, midi);
+
+        return std::vector<float> (buffer.getReadPointer (0),
+                                   buffer.getReadPointer (0) + buffer.getNumSamples());
+    };
+
+    const auto single = render ({ 60 });
+    const auto chord = render ({ 48, 52, 55, 60, 64, 67, 72, 76 });
+
+    const float singlePeak = findPeak (single);
+    float chordPeak = 0.0f;
+    for (float sample : chord)
+    {
+        assert (std::isfinite (sample));
+        assert (std::abs (sample) <= 0.95f + 1e-4f);
+        chordPeak = std::max (chordPeak, std::abs (sample));
+    }
+
+    // Soft ceiling only: no sample sits on a hard rail.
+    assert (chordPeak < 0.95f);
+    // Voices really sum: a chord is much louder than one note.
+    assert (chordPeak > 2.0f * singlePeak);
+
+    printf ("  single peak = %f, chord peak = %f\n", singlePeak, chordPeak);
+    printf ("  PASS: Default patch open, chord under ceiling\n");
+}
+
+// ============================================================
+// Test 19: Retrigger and voice stealing do not step the waveform.
+// ============================================================
+void testNoClickOnRetriggerOrSteal()
+{
+    printf ("Test 19: No click on retrigger/steal ...\n");
+
+    CresizerAudioProcessor processor;
+    processor.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (1, 16384);
+    buffer.clear();
+
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::noteOn (1, 60, 1.0f), 0);
+    midi.addEvent (juce::MidiMessage::noteOn (1, 60, 1.0f), 6000);
+    const int chord[] = { 62, 64, 65, 67, 69, 71, 72, 74 };
+    for (int note : chord)
+        midi.addEvent (juce::MidiMessage::noteOn (1, note, 1.0f), 12000);
+
+    processor.processBlock (buffer, midi);
+
+    const float* data = buffer.getReadPointer (0);
+    auto maxDelta = [&] (int from, int to)
+    {
+        float m = 0.0f;
+        for (int i = from + 1; i < to; ++i)
+            m = std::max (m, std::abs (data[i] - data[i - 1]));
+        return m;
+    };
+
+    const float steady = maxDelta (2000, 5900);
+    const float retrigger = maxDelta (5990, 6010);
+    const float steal = maxDelta (11990, 12010);
+
+    printf ("  steady=%f retrigger=%f steal=%f\n", steady, retrigger, steal);
+    assert (retrigger < steady * 2.0f + 0.005f);
+    assert (steal < steady * 2.0f + 0.005f);
+
+    printf ("  PASS: No click on retrigger/steal\n");
+}
+
+// ============================================================
+// Test 20: Sweeping gain/cutoff/resonance/type while playing stays continuous.
+// ============================================================
+void testParameterAutomationIsClickFree()
+{
+    printf ("Test 20: Parameter automation is click-free ...\n");
+
+    CresizerAudioProcessor processor;
+    auto setParam = [&] (const char* id, float value)
+    {
+        auto* parameter = processor.getAPVTS().getParameter (id);
+        assert (parameter != nullptr);
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+    };
+
+    processor.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (1, 512);
+    buffer.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::noteOn (1, 60, 1.0f), 0);
+    processor.processBlock (buffer, midi);
+
+    float previous = buffer.getReadPointer (0)[buffer.getNumSamples() - 1];
+    float maxDelta = 0.0f;
+    int maxBlock = -1;
+
+    constexpr int numBlocks = 200;
+    for (int block = 0; block < numBlocks; ++block)
+    {
+        const float t = static_cast<float> (block) / static_cast<float> (numBlocks - 1);
+        setParam (ParamID::gain, -60.0f + 60.0f * t);
+        setParam (ParamID::filterCutoff, 200.0f + 7800.0f * t);
+        setParam (ParamID::filterResonance, t);
+        setParam (ParamID::filterType, (block / 50) % 2 == 0 ? 0.0f : 1.0f);
+        setParam (ParamID::filterEnabled, 1.0f);
+
+        buffer.clear();
+        juce::MidiBuffer empty;
+        processor.processBlock (buffer, empty);
+
+        const float* data = buffer.getReadPointer (0);
+        float blockDelta = 0.0f;
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+        {
+            assert (std::isfinite (data[i]));
+            blockDelta = std::max (blockDelta, std::abs (data[i] - previous));
+            previous = data[i];
+        }
+
+        if (blockDelta > maxDelta)
+        {
+            maxDelta = blockDelta;
+            maxBlock = block;
+        }
+    }
+
+    printf ("  max delta = %f at block %d\n", maxDelta, maxBlock);
+    assert (maxDelta < 0.02f);
+
+    printf ("  PASS: Parameter automation is click-free\n");
+}
+
+// ============================================================
+// Test 21: all-notes-off cancels a queued steal.
+// ============================================================
+void testAllNotesOffCancelsPendingSteal()
+{
+    printf ("Test 21: All-notes-off cancels pending steal ...\n");
+
+    CresizerSynthesiser synth;
+    synth.setNumVoices (2);
+    synth.prepare (48000.0);
+    synth.startNote (60, 1.0f);
+    synth.startNote (62, 1.0f);
+    synth.startNote (64, 1.0f);   // queued behind a fade on 60's voice
+
+    synth.stopAllNotes (true);
+
+    juce::AudioBuffer<float> buffer (1, 1024);
+    buffer.clear();
+    juce::MidiBuffer empty;
+    synth.processBlock (buffer, empty);
+
+    assert (synth.findVoiceForNote (64) == nullptr);
+    assert (buffer.getMagnitude (0, buffer.getNumSamples()) < 0.05f);
+
+    printf ("  PASS: All-notes-off cancels pending steal\n");
+}
+
 int main()
 {
     printf ("=== CresizerSynth DSP Tests ===\n\n");
@@ -331,13 +940,26 @@ int main()
     testWaveformsBounded ();
     testEnvelopeParametersChange ();
     testGainRange ();
-    testPeakLimiting ();
+    testSoftLimit ();
     testWaveformPropagationThroughSynth ();
     testVoiceStartStopCycle ();
     testStateAndParameters ();
     testVoiceStealingAndRetrigger ();
     testSawAliasing ();
     testWaveformSwitchAndRelease ();
+    testFilterFrequencyResponse ();
+    testFilterBypass ();
+    testFilterResonancePeak ();
+    testFilterDcResponse ();
+    testFilterStabilityAtExtremes ();
+    testFilterCutoffSweep ();
+    testFilterParametersAndState ();
+    testFilterThroughProcessor ();
+    testNoAllocationInProcessBlock ();
+    testDefaultPatchAndHeadroom ();
+    testNoClickOnRetriggerOrSteal ();
+    testParameterAutomationIsClickFree ();
+    testAllNotesOffCancelsPendingSteal ();
 
     printf ("\n=== All tests completed ===\n");
     return 0;
