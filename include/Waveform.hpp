@@ -10,8 +10,15 @@ public:
         @param phase        Current phase in [0, 2*pi)
         @param phaseIncrement Phase increment per sample (2*pi * freq / sampleRate).
                                If 0, no anti-aliasing is applied.
+        Stateful waveforms (triangle) accumulate here, so this is non-const.
     */
-    virtual double calculate (double phase, double phaseIncrement = 0.0) const = 0;
+    virtual double calculate (double phase, double phaseIncrement = 0.0) = 0;
+
+    /** Called once before rendering with the current sample rate. */
+    virtual void prepare (double /*sampleRate*/) {}
+
+    /** Clears any internal state; called when the oscillator phase resets. */
+    virtual void reset() {}
 };
 
 enum class WaveformType { sine, saw, square, triangle };

@@ -1164,6 +1164,37 @@ void testWaveformDcOffset()
     printf ("  PASS: Waveform DC offset\n");
 }
 
+// ============================================================
+// Test 29: Triangle reaches Nyquist instead of stopping at 63 harmonics.
+// ============================================================
+void testTriangleBandwidth()
+{
+    printf ("Test 29: Triangle bandwidth ...\n");
+
+    constexpr float sampleRate = 48000.0f;
+    constexpr int numSamples = 32768;
+    constexpr float fundamental = 130.81f;
+
+    Oscillator osc;
+    osc.prepare (sampleRate);
+    osc.setFrequency (fundamental);
+    osc.setWaveform (WaveformType::triangle);
+
+    std::vector<float> samples (numSamples);
+    for (int i = 0; i < numSamples; ++i)
+        samples[i] = osc.getNextSample();
+
+    const float f0 = dftMagnitudeAt (samples, fundamental, sampleRate);
+    const float h65 = dftMagnitudeAt (samples, fundamental * 65.0f, sampleRate);
+    const float h129 = dftMagnitudeAt (samples, fundamental * 129.0f, sampleRate);
+
+    printf ("  h65 rel = %f, h129 rel = %f\n", h65 / f0, h129 / f0);
+    assert (h65 > f0 * 1.0e-4f);   // 1/k^2 at k=65 is about 2.4e-4
+    assert (h129 > f0 * 2.0e-5f);
+
+    printf ("  PASS: Triangle bandwidth\n");
+}
+
 int main()
 {
     printf ("=== CresizerSynth DSP Tests ===\n\n");
@@ -1201,6 +1232,7 @@ int main()
     testOscillatorFrequency ();
     testParameterNormalization ();
     testWaveformDcOffset ();
+    testTriangleBandwidth ();
 
     printf ("\n=== All tests completed ===\n");
     return 0;

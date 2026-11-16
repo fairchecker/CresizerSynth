@@ -11,7 +11,7 @@ public:
     Oscillator();
 
     void prepare(double sampleRate);
-    void reset() { phase_ = 0.0; }
+    void reset();
     void setFrequency(double newFrequency);
     /** Realtime-safe: switches waveform without allocation or phase reset. */
     void setWaveform(WaveformType newWaveformType);
