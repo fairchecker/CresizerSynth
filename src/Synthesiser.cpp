@@ -1,5 +1,26 @@
 #include "Synthesiser.hpp"
 
+#include <cmath>
+
+namespace
+{
+    constexpr float kSoftKnee = 0.7f;
+    constexpr float kSoftCeiling = 0.95f;
+
+    /** Linear below the knee, tanh-shaped above it, asymptotic to the ceiling. */
+    float softClipSample (float value) noexcept
+    {
+        const float magnitude = std::abs (value);
+
+        if (magnitude <= kSoftKnee)
+            return value;
+
+        const float range = kSoftCeiling - kSoftKnee;
+        const float shaped = kSoftKnee + range * std::tanh ((magnitude - kSoftKnee) / range);
+        return value < 0.0f ? -shaped : shaped;
+    }
+}
+
 void CresizerSynthesiser::setNumVoices (int count)
 {
     voices.clear();
@@ -23,6 +44,12 @@ void CresizerSynthesiser::setEnvelopeParameters (const Envelope::Parameters& new
         voice.setEnvelopeParameters (newParameters);
 }
 
+void CresizerSynthesiser::setFilterParameters (const Filter::Parameters& newParameters)
+{
+    for (auto& voice : voices)
+        voice.setFilterParameters (newParameters);
+}
+
 void CresizerSynthesiser::setWaveform (WaveformType newWaveformType)
 {
     for (auto& voice : voices)
@@ -31,13 +58,22 @@ void CresizerSynthesiser::setWaveform (WaveformType newWaveformType)
 
 void CresizerSynthesiser::startNote (int midiNoteNumber, float velocity)
 {
-    // Retriggering a pitch replaces its previous voice, avoiding stuck notes.
+    // Same pitch: re-attack without cutting the running waveform.
     if (auto* existing = findVoiceForNote (midiNoteNumber))
-        existing->stopNote (0.0f, false);
+    {
+        existing->retriggerNote (midiNoteNumber, velocity);
+        existing->setStartOrder (++noteCounter);
+        return;
+    }
 
     if (auto* voice = findFreeVoice())
     {
-        voice->startNote (midiNoteNumber, velocity);
+        // findFreeVoice() falls back to the oldest active voice: fade it out first.
+        if (voice->isVoiceActive())
+            voice->stealNote (midiNoteNumber, velocity);
+        else
+            voice->startNote (midiNoteNumber, velocity);
+
         voice->setStartOrder (++noteCounter);
     }
 }
@@ -52,7 +88,10 @@ void CresizerSynthesiser::stopAllNotes (bool allowTailOff)
 {
     for (auto& voice : voices)
         if (voice.isVoiceActive())
+        {
+            voice.cancelPendingNote();
             voice.stopNote (0.0f, allowTailOff);
+        }
 }
 
 Voice* CresizerSynthesiser::findFreeVoice()
@@ -101,7 +140,7 @@ void CresizerSynthesiser::renderVoices (juce::AudioBuffer<float>& buffer, int st
         voice.renderNextBlock (buffer, startSample, numSamples);
 }
 
-void CresizerSynthesiser::applyPeakLimit (juce::AudioBuffer<float>& buffer)
+void CresizerSynthesiser::applySoftLimit (juce::AudioBuffer<float>& buffer)
 {
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
@@ -111,15 +150,7 @@ void CresizerSynthesiser::applyPeakLimit (juce::AudioBuffer<float>& buffer)
         auto* data = buffer.getWritePointer (channel);
 
         for (int sample = 0; sample < numSamples; ++sample)
-        {
-            const float value = data[sample];
-
-            // Explicit limiter/clamp: guarantee peak <= 1.0
-            if (value > 1.0f)
-                data[sample] = 1.0f;
-            else if (value < -1.0f)
-                data[sample] = -1.0f;
-        }
+            data[sample] = softClipSample (data[sample]);
     }
 }
 
@@ -153,7 +184,4 @@ void CresizerSynthesiser::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     if (currentSample < buffer.getNumSamples())
         renderVoices (buffer, currentSample, buffer.getNumSamples() - currentSample);
-
-    // Explicit limiter/clamp after gain: guarantee peak <= 1.0
-    applyPeakLimit (buffer);
 }

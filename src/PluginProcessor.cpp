@@ -33,14 +33,15 @@ void CresizerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     const auto params = bridge.read();
 
     synthesiser_.setEnvelopeParameters (params.envelope);
+    synthesiser_.setFilterParameters (params.filter);
     synthesiser_.setWaveform (params.waveform);
     synthesiser_.processBlock (buffer, midiMessages);
 
     masterGain.setTargetValue (juce::Decibels::decibelsToGain (params.masterGainDb, -120.0f));
     masterGain.applyGain (buffer, buffer.getNumSamples());
 
-    // Explicit limiter/clamp after gain: guarantee peak <= 1.0
-    synthesiser_.applyPeakLimit (buffer);
+    // Soft ceiling after gain; linear below 0.7, asymptotic to 0.95.
+    synthesiser_.applySoftLimit (buffer);
 }
 
 juce::AudioProcessorEditor* CresizerAudioProcessor::createEditor()

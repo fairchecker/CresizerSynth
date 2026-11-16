@@ -22,12 +22,13 @@ public:
     void stopAllNotes (bool allowTailOff = false);
 
     void setEnvelopeParameters (const Envelope::Parameters& newParameters);
+    void setFilterParameters (const Filter::Parameters& newParameters);
 
     /** Realtime-safe waveform selection propagated to all voices; no allocation. */
     void setWaveform (WaveformType newWaveformType);
 
-    /** Explicit limiter/clamp: guarantees output peak <= 1.0. */
-    void applyPeakLimit (juce::AudioBuffer<float>& buffer);
+    /** Soft-knee ceiling at 0.95 after master gain; linear below 0.7. */
+    void applySoftLimit (juce::AudioBuffer<float>& buffer);
 
     void startNote (int midiNoteNumber, float velocity);
     void stopNote (int midiNoteNumber, bool allowTailOff = true);

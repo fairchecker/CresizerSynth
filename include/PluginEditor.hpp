@@ -25,6 +25,10 @@ private:
     juce::Slider releaseSlider_;
     juce::Slider gainSlider_;
     juce::ComboBox waveformCombo_;
+    juce::Slider filterCutoffSlider_;
+    juce::Slider filterResonanceSlider_;
+    juce::ComboBox filterTypeCombo_;
+    juce::ToggleButton filterEnabledButton_;
 
     std::unique_ptr<juce::SliderParameterAttachment> attackAttachment_;
     std::unique_ptr<juce::SliderParameterAttachment> decayAttachment_;
@@ -32,8 +36,13 @@ private:
     std::unique_ptr<juce::SliderParameterAttachment> releaseAttachment_;
     std::unique_ptr<juce::SliderParameterAttachment> gainAttachment_;
     std::unique_ptr<juce::ComboBoxParameterAttachment> waveformAttachment_;
+    std::unique_ptr<juce::SliderParameterAttachment> filterCutoffAttachment_;
+    std::unique_ptr<juce::SliderParameterAttachment> filterResonanceAttachment_;
+    std::unique_ptr<juce::ComboBoxParameterAttachment> filterTypeAttachment_;
+    std::unique_ptr<juce::ButtonParameterAttachment> filterEnabledAttachment_;
 
     void buildControls (juce::AudioProcessorValueTreeState& apvts);
+    void drawKeyboard (juce::Graphics& g, juce::Rectangle<int> area);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CresizerAudioProcessorEditor)
 };

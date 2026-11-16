@@ -5,9 +5,10 @@
 static std::unique_ptr<juce::RangedAudioParameter> makeFloat (const char* id,
                                                               const char* name,
                                                               juce::NormalisableRange<float> range,
-                                                              float defaultValue)
+                                                              float defaultValue,
+                                                              juce::AudioParameterFloatAttributes attributes = {})
 {
-    return std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { id, 1 }, name, range, defaultValue);
+    return std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { id, 1 }, name, range, defaultValue, attributes);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
@@ -31,6 +32,27 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::NormalisableRange<float> { -120.0f, 0.0f, 0.1f },
         -6.0f,
         juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ParamID::filterEnabled, 1 },
+        "Filter Enabled",
+        false));
+
+    layout.add (makeFloat (ParamID::filterCutoff, "Filter Cutoff",
+                           juce::NormalisableRange<float> { 20.0f, 20000.0f, 0.1f, 0.25f },
+                           20000.0f,
+                           juce::AudioParameterFloatAttributes()
+                               .withStringFromValueFunction ([] (float value, int)
+                                   { return juce::String (juce::roundToInt (value)) + " Hz"; })));
+    layout.add (makeFloat (ParamID::filterResonance, "Filter Resonance",
+                           juce::NormalisableRange<float> { 0.0f, 1.0f, 0.001f },
+                           0.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { ParamID::filterType, 1 },
+        "Filter Type",
+        juce::StringArray { "Lowpass", "Highpass" },
+        0));
 
     return layout;
 }
