@@ -4,7 +4,7 @@ name: CI
 on:
   push:
     branches:
-      - ci-cd-implementation
+      - main
   pull_request:
     branches:
       - main
