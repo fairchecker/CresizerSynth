@@ -35,10 +35,15 @@ public:
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
     const juce::AudioProcessorValueTreeState& getAPVTS() const noexcept { return apvts; }
 
+    /** Owned here so on-screen / QWERTY notes survive editor close. */
+    juce::MidiKeyboardState& getKeyboardState() noexcept { return keyboardState_; }
+
 private:
     juce::AudioProcessorValueTreeState apvts;   // ОБЯЗАТЕЛЬНО объявлен раньше bridge
     ParameterBridge bridge;
     CresizerSynthesiser synthesiser_;
+    juce::MidiKeyboardState keyboardState_;
+    juce::MidiBuffer mergedMidi_;   // preallocated: host MIDI + GUI keyboard events
     juce::SmoothedValue<float> masterGain;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CresizerAudioProcessor)

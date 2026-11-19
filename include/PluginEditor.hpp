@@ -2,14 +2,17 @@
 
 #include "PluginProcessor.hpp"
 
-class CresizerAudioProcessorEditor : public juce::AudioProcessorEditor
+class CresizerAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                    private juce::Timer
 {
 public:
     CresizerAudioProcessorEditor (CresizerAudioProcessor& p);
-    ~CresizerAudioProcessorEditor() override = default;
+    ~CresizerAudioProcessorEditor() override;
 
     void paint (juce::Graphics& g) override;
     void resized() override;
+    void parentHierarchyChanged() override;
+    void visibilityChanged() override;
 
     /** GUI reads/writes parameters through the processor's APVTS. */
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return processor_.getAPVTS(); }
@@ -18,6 +21,7 @@ private:
     juce::AudioProcessorValueTreeState& getAPVTSRef (CresizerAudioProcessor& p) noexcept { return p.getAPVTS(); }
 
     CresizerAudioProcessor& processor_;
+    juce::MidiKeyboardComponent keyboardComponent_;
 
     juce::Slider attackSlider_;
     juce::Slider decaySlider_;
@@ -42,7 +46,11 @@ private:
     std::unique_ptr<juce::ButtonParameterAttachment> filterEnabledAttachment_;
 
     void buildControls (juce::AudioProcessorValueTreeState& apvts);
-    void drawKeyboard (juce::Graphics& g, juce::Rectangle<int> area);
+    void requestKeyboardFocus();
+    void timerCallback() override;
+
+    bool keyboardFocusGrabbed_ = false;
+    int focusAttempts_ = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CresizerAudioProcessorEditor)
 };

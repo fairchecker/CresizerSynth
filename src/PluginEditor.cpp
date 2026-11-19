@@ -3,10 +3,66 @@
 #include "params/ParameterIDs.hpp"
 
 CresizerAudioProcessorEditor::CresizerAudioProcessorEditor (CresizerAudioProcessor& p)
-    : AudioProcessorEditor (&p), processor_ (p)
+    : AudioProcessorEditor (&p),
+      processor_ (p),
+      keyboardComponent_ (p.getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard)
 {
     buildControls (getAPVTSRef (processor_));
+
+    keyboardComponent_.setAvailableRange (48, 84);   // C3..C6
+    keyboardComponent_.setLowestVisibleKey (48);
+    keyboardComponent_.setKeyPressBaseOctave (4);    // QWERTY starts at C4
+    keyboardComponent_.setKeyWidth (24.0f);
+    addAndMakeVisible (keyboardComponent_);
+
     setSize (460, 480);
+}
+
+CresizerAudioProcessorEditor::~CresizerAudioProcessorEditor()
+{
+    // Editor can close while keys are held; release them for the audio thread.
+    processor_.getKeyboardState().allNotesOff (0);
+}
+
+void CresizerAudioProcessorEditor::parentHierarchyChanged()
+{
+    requestKeyboardFocus();
+}
+
+void CresizerAudioProcessorEditor::visibilityChanged()
+{
+    if (isShowing())
+        requestKeyboardFocus();
+}
+
+void CresizerAudioProcessorEditor::requestKeyboardFocus()
+{
+    if (keyboardFocusGrabbed_)
+        return;
+
+    focusAttempts_ = 0;
+    startTimer (100);
+}
+
+void CresizerAudioProcessorEditor::timerCallback()
+{
+    // The peer may not exist yet; poll briefly until the window is on screen.
+    if (keyboardFocusGrabbed_ || ++focusAttempts_ > 50)
+    {
+        stopTimer();
+        return;
+    }
+
+    if (! isShowing())
+        return;
+
+    keyboardComponent_.grabKeyboardFocus();
+
+    if (keyboardComponent_.hasKeyboardFocus (true))
+    {
+        keyboardFocusGrabbed_ = true;
+        stopTimer();
+    }
 }
 
 void CresizerAudioProcessorEditor::buildControls (juce::AudioProcessorValueTreeState& apvts)
@@ -121,51 +177,6 @@ void CresizerAudioProcessorEditor::paint (juce::Graphics& g)
                              "Filter cutoff", "Filter resonance", "Filter type", "Filter" };
     for (int i = 0; i < 10; ++i)
         g.drawText (labels[i], 12, 12 + i * 40, 100, 32, juce::Justification::centredLeft);
-
-    drawKeyboard (g, { 12, 412, getWidth() - 24, 56 });
-}
-
-void CresizerAudioProcessorEditor::drawKeyboard (juce::Graphics& g, juce::Rectangle<int> area)
-{
-    constexpr int numWhiteKeys = 15;   // C3..C5 inclusive
-    constexpr int whiteKeysPerOctave = 7;
-    const float whiteWidth = static_cast<float> (area.getWidth()) / static_cast<float> (numWhiteKeys);
-
-    // White keys.
-    g.setColour (juce::Colours::white);
-    for (int i = 0; i < numWhiteKeys; ++i)
-    {
-        const juce::Rectangle<float> key (area.getX() + i * whiteWidth,
-                                          static_cast<float> (area.getY()),
-                                          whiteWidth,
-                                          static_cast<float> (area.getHeight()));
-        g.fillRect (key.reduced (0.5f));
-    }
-
-    g.setColour (juce::Colours::black);
-    for (int i = 0; i < numWhiteKeys; ++i)
-    {
-        const juce::Rectangle<float> key (area.getX() + i * whiteWidth,
-                                          static_cast<float> (area.getY()),
-                                          whiteWidth,
-                                          static_cast<float> (area.getHeight()));
-        g.drawRect (key, 1.0f);
-    }
-
-    // Black keys sit after white keys C, D, F, G, A of each octave.
-    static constexpr int blackAfterWhite[] = { 0, 1, 3, 4, 5 };
-    for (int octave = 0; octave < 2; ++octave)
-    {
-        for (int i = 0; i < 5; ++i)
-        {
-            const float centreX = area.getX() + (octave * whiteKeysPerOctave + blackAfterWhite[i] + 1) * whiteWidth;
-            const juce::Rectangle<float> key (centreX - whiteWidth * 0.3f,
-                                              static_cast<float> (area.getY()),
-                                              whiteWidth * 0.6f,
-                                              area.getHeight() * 0.6f);
-            g.fillRect (key);
-        }
-    }
 }
 
 void CresizerAudioProcessorEditor::resized()
@@ -181,4 +192,5 @@ void CresizerAudioProcessorEditor::resized()
     filterResonanceSlider_.setBounds (112, 292, width, 32);
     filterTypeCombo_.setBounds (112, 332, width, 32);
     filterEnabledButton_.setBounds (112, 372, 120, 32);
+    keyboardComponent_.setBounds (12, 412, getWidth() - 24, 56);
 }
