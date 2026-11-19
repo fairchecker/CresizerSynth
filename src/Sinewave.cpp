@@ -2,7 +2,7 @@
 
 #include <cmath>
 
-double Sinewave::calculate(double phase, double) const
+double Sinewave::calculate(double phase, double)
 {
     return std::sin(phase);
 }

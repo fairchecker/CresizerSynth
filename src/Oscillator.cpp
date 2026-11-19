@@ -16,6 +16,19 @@ void Oscillator::prepare(double sampleRate)
 {
     sample_rate_ = sampleRate;
     updatePhaseIncrement();
+
+    for (auto& waveform : waveforms_)
+        if (waveform != nullptr)
+            waveform->prepare (sampleRate);
+}
+
+void Oscillator::reset()
+{
+    phase_ = 0.0;
+
+    for (auto& waveform : waveforms_)
+        if (waveform != nullptr)
+            waveform->reset();
 }
 
 void Oscillator::setFrequency(double frequency)

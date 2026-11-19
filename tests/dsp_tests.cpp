@@ -1034,6 +1034,167 @@ void testFilterLongRunStability()
     printf ("  PASS: Filter long-run stability\n");
 }
 
+// ============================================================
+// Test 25: Envelope stages: attack peak, sustain level, release time.
+// ============================================================
+void testEnvelopeStages()
+{
+    printf ("Test 25: Envelope stages ...\n");
+
+    constexpr double sampleRate = 48000.0;
+    Envelope envelope;
+    envelope.prepare (sampleRate);
+    envelope.setParameters ({ 0.01f, 0.02f, 0.5f, 0.02f });
+
+    envelope.reset();
+    envelope.noteOn();
+
+    float attackPeak = 0.0f;
+    const int attackSamples = static_cast<int> (0.01 * sampleRate);
+    for (int i = 0; i < attackSamples; ++i)
+        attackPeak = std::max (attackPeak, envelope.getNextSample());
+    assert (attackPeak > 0.9f && attackPeak <= 1.01f);
+
+    float level = 0.0f;
+    for (int i = 0; i < static_cast<int> (0.1 * sampleRate); ++i)
+        level = envelope.getNextSample();
+    assert (std::abs (level - 0.5f) < 0.02f);
+
+    envelope.noteOff();
+    int releaseSamples = 0;
+    while (envelope.isActive() && releaseSamples < static_cast<int> (0.5 * sampleRate))
+    {
+        envelope.getNextSample();
+        ++releaseSamples;
+    }
+    assert (!envelope.isActive());
+    assert (releaseSamples < static_cast<int> (0.1 * sampleRate));
+
+    printf ("  PASS: Envelope stages\n");
+}
+
+// ============================================================
+// Test 26: Sine oscillator really runs at the requested frequency.
+// ============================================================
+void testOscillatorFrequency()
+{
+    printf ("Test 26: Oscillator frequency ...\n");
+
+    Oscillator osc;
+    osc.prepare (48000.0);
+    osc.setFrequency (440.0);
+
+    int risingCrossings = 0;
+    float previous = osc.getNextSample();
+    for (int i = 0; i < 48000; ++i)
+    {
+        const float sample = osc.getNextSample();
+        if (previous <= 0.0f && sample > 0.0f)
+            ++risingCrossings;
+        previous = sample;
+    }
+
+    printf ("  rising crossings = %d\n", risingCrossings);
+    assert (std::abs (risingCrossings - 440) <= 2);
+
+    printf ("  PASS: Oscillator frequency\n");
+}
+
+// ============================================================
+// Test 27: Parameter normalization round-trips and range endpoints.
+// ============================================================
+void testParameterNormalization()
+{
+    printf ("Test 27: Parameter normalization ...\n");
+
+    CresizerAudioProcessor processor;
+    auto& state = processor.getAPVTS();
+
+    const char* continuous[] = { ParamID::attack, ParamID::decay, ParamID::sustain,
+                                 ParamID::release, ParamID::gain, ParamID::filterCutoff,
+                                 ParamID::filterResonance };
+    for (const char* id : continuous)
+    {
+        auto* parameter = state.getParameter (id);
+        assert (parameter != nullptr);
+        const float value = parameter->convertFrom0to1 (0.37f);
+        const float roundTrip = parameter->convertTo0to1 (value);
+        assert (std::abs (roundTrip - 0.37f) < 0.02f);
+    }
+
+    auto* cutoff = state.getParameter (ParamID::filterCutoff);
+    assert (std::abs (cutoff->convertFrom0to1 (0.0f) - 20.0f) < 0.01f);
+    assert (std::abs (cutoff->convertFrom0to1 (1.0f) - 20000.0f) < 0.5f);
+
+    auto* gain = state.getParameter (ParamID::gain);
+    assert (std::abs (gain->convertFrom0to1 (0.0f) - (-120.0f)) < 0.01f);
+    assert (std::abs (gain->convertFrom0to1 (1.0f)) < 0.01f);
+
+    auto* enabled = state.getParameter (ParamID::filterEnabled);
+    assert (enabled->convertFrom0to1 (0.0f) == 0.0f);
+    assert (enabled->convertFrom0to1 (1.0f) == 1.0f);
+
+    printf ("  PASS: Parameter normalization\n");
+}
+
+// ============================================================
+// Test 28: Every waveform is DC-free over a full second.
+// ============================================================
+void testWaveformDcOffset()
+{
+    printf ("Test 28: Waveform DC offset ...\n");
+
+    constexpr int numSamples = 48000;
+    for (int type = 0; type < 4; ++type)
+    {
+        Oscillator osc;
+        osc.prepare (48000.0);
+        osc.setFrequency (110.0);
+        osc.setWaveform (static_cast<WaveformType> (type));
+
+        double sum = 0.0;
+        for (int i = 0; i < numSamples; ++i)
+            sum += osc.getNextSample();
+
+        const double mean = sum / numSamples;
+        printf ("  waveform %d mean = %f\n", type, mean);
+        assert (std::abs (mean) < 0.02);
+    }
+
+    printf ("  PASS: Waveform DC offset\n");
+}
+
+// ============================================================
+// Test 29: Triangle reaches Nyquist instead of stopping at 63 harmonics.
+// ============================================================
+void testTriangleBandwidth()
+{
+    printf ("Test 29: Triangle bandwidth ...\n");
+
+    constexpr float sampleRate = 48000.0f;
+    constexpr int numSamples = 32768;
+    constexpr float fundamental = 130.81f;
+
+    Oscillator osc;
+    osc.prepare (sampleRate);
+    osc.setFrequency (fundamental);
+    osc.setWaveform (WaveformType::triangle);
+
+    std::vector<float> samples (numSamples);
+    for (int i = 0; i < numSamples; ++i)
+        samples[i] = osc.getNextSample();
+
+    const float f0 = dftMagnitudeAt (samples, fundamental, sampleRate);
+    const float h65 = dftMagnitudeAt (samples, fundamental * 65.0f, sampleRate);
+    const float h129 = dftMagnitudeAt (samples, fundamental * 129.0f, sampleRate);
+
+    printf ("  h65 rel = %f, h129 rel = %f\n", h65 / f0, h129 / f0);
+    assert (h65 > f0 * 1.0e-4f);   // 1/k^2 at k=65 is about 2.4e-4
+    assert (h129 > f0 * 2.0e-5f);
+
+    printf ("  PASS: Triangle bandwidth\n");
+}
+
 int main()
 {
     printf ("=== CresizerSynth DSP Tests ===\n\n");
@@ -1067,6 +1228,11 @@ int main()
     testFilterSlope ();
     testFilterResonanceMonotonic ();
     testFilterLongRunStability ();
+    testEnvelopeStages ();
+    testOscillatorFrequency ();
+    testParameterNormalization ();
+    testWaveformDcOffset ();
+    testTriangleBandwidth ();
 
     printf ("\n=== All tests completed ===\n");
     return 0;
