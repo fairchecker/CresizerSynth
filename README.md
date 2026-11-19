@@ -284,9 +284,9 @@ CresizerSynth/
 * [x] Основные waveform (Sine / Saw / Square / Triangle + anti-alias)
 * [x] Frequency / amplitude control
 * [x] Envelope
-* [ ] Базовый filter
-* [ ] Стабильная обработка audio buffer
-* [ ] Проверка DSP-компонентов независимо от GUI
+* [x] Базовый filter
+* [x] Стабильная обработка audio buffer
+* [x] Проверка DSP-компонентов независимо от GUI
 
 **Результат:**
 
@@ -321,13 +321,23 @@ MIDI / parameters
 * [x] Основной layout
 * [x] Oscillator controls
 * [x] Envelope controls
-* [ ] Filter controls
+* [x] Filter controls
 * [x] Master controls
 * [x] Knobs/sliders
 * [x] Value display
 * [x] Visual feedback
 * [x] Обработка пользовательского ввода
 * [x] Привязка UI к parameter system
+* [x] Визуальное отображение клавиш пианино снизу
+
+### Ручные тесты (перенесены в фазу 3 — ещё не проверены)
+
+* [ ] Щелчки гейна — отсутствие щелчков при изменении гейна (`SmoothedValue`; автотест sweep gain: Δ 0.006; на слух не проверено)
+* [ ] Сохранение пресета в хосте — round-trip состояния APVTS (автотест save/load проходит; в хосте не проверено)
+* [ ] Автоматизация — автоматизация параметров без крашей и щелчков (автотест sweep gain/cutoff/resonance/type/enable: Δ 0.006; в хосте не проверено)
+* [ ] Инструментальная проверка — отсутствие аллокаций в `processBlock` (автотест Test 17: 0 аллокаций; ждёт подтверждения владельца)
+* [x] Чистота выхода — отсутствие грязи/клиппинга на аккордах (проверено владельцем после переноса клиппера за мастер-гейн)
+* [ ] Щелчки — retrigger/steal исправлены (Δ 0.134 → 0.003/0.005); статус: to-check, требует проверки на слух
 
 ---
 

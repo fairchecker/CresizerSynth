@@ -8,4 +8,8 @@ namespace ParamID
     inline constexpr auto release  = "env.release";
     inline constexpr auto waveform = "osc.waveform";
     inline constexpr auto gain     = "master.gain";
+    inline constexpr auto filterCutoff    = "filter.cutoff";
+    inline constexpr auto filterResonance = "filter.resonance";
+    inline constexpr auto filterType      = "filter.type";
+    inline constexpr auto filterEnabled   = "filter.enabled";
 }

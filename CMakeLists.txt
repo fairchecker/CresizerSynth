@@ -34,6 +34,7 @@ target_sources(Cresizer PRIVATE
     src/Oscillator.cpp
     src/Sinewave.cpp
     src/Waveform.cpp
+    src/Filter.cpp
     src/Envelope.cpp
     src/Voice.cpp
     src/Synthesiser.cpp

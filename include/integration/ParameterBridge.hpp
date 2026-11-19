@@ -21,4 +21,8 @@ private:
     std::atomic<float>* release = nullptr;
     std::atomic<float>* waveform = nullptr;
     std::atomic<float>* gain = nullptr;
+    std::atomic<float>* filterCutoff = nullptr;
+    std::atomic<float>* filterResonance = nullptr;
+    std::atomic<float>* filterType = nullptr;
+    std::atomic<float>* filterEnabled = nullptr;
 };
