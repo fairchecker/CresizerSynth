@@ -367,6 +367,7 @@ MIDI / parameters
 * [x] GUI → parameters (APVTS accessor public for future GUI)
 * [x] Parameters → DSP (ParameterBridge reads cached atomics)
 * [ ] MIDI → synthesizer
+* [x] QWERTY-клавиатура в редакторе (`MidiKeyboardComponent`, база C4)
 * [ ] Audio → host
 * [ ] Проверка automation
 * [ ] Проверка state save/load в хосте (автоматический round-trip APVTS есть)

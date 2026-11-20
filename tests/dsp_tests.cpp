@@ -737,6 +737,9 @@ void testNoAllocationInProcessBlock()
     // Warm up lazy initialisation before measuring.
     processor.processBlock (buffer, midi);
 
+    // Queue a GUI-keyboard note; the measured block must inject it without allocating.
+    processor.getKeyboardState().noteOn (1, 64, 1.0f);
+
     allocationCount.store (0);
     countingAllocations.store (true);
     processor.processBlock (buffer, midi);
@@ -1195,6 +1198,41 @@ void testTriangleBandwidth()
     printf ("  PASS: Triangle bandwidth\n");
 }
 
+// ============================================================
+// Test 35: MidiKeyboardState notes reach the synthesizer.
+// ============================================================
+void testKeyboardStateThroughProcessor()
+{
+    printf ("Test 35: Keyboard state reaches the synthesizer ...\n");
+
+    CresizerAudioProcessor processor;
+    processor.prepareToPlay (48000.0, 512);
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+
+    processor.getKeyboardState().noteOn (1, 60, 1.0f);
+    buffer.clear();
+    processor.processBlock (buffer, midi);
+    const float held = buffer.getMagnitude (0, buffer.getNumSamples());
+    assert (held > 0.001f);
+
+    processor.getKeyboardState().noteOff (1, 60, 0.0f);
+    float released = held;
+    for (int block = 0; block < 64; ++block)
+    {
+        buffer.clear();
+        midi.clear();
+        processor.processBlock (buffer, midi);
+        released = buffer.getMagnitude (0, buffer.getNumSamples());
+    }
+
+    printf ("  held = %f, released = %f\n", held, released);
+    assert (released < held * 0.01f);
+
+    printf ("  PASS: Keyboard state reaches the synthesizer\n");
+}
+
 int main()
 {
     printf ("=== CresizerSynth DSP Tests ===\n\n");
@@ -1233,6 +1271,7 @@ int main()
     testParameterNormalization ();
     testWaveformDcOffset ();
     testTriangleBandwidth ();
+    testKeyboardStateThroughProcessor ();
 
     printf ("\n=== All tests completed ===\n");
     return 0;

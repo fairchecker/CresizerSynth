@@ -17,12 +17,16 @@ void CresizerAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     synthesiser_.prepare (sampleRate);
 
+    // Enough for typical host MIDI plus GUI keyboard events; avoids audio-thread growth.
+    mergedMidi_.ensureSize (4096);
+
     masterGain.reset (sampleRate, 0.02);
     masterGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (bridge.read().masterGainDb, -120.0f));
 }
 
 void CresizerAudioProcessor::releaseResources()
 {
+    keyboardState_.allNotesOff (0);
     synthesiser_.stopAllNotes();
 }
 
@@ -30,12 +34,18 @@ void CresizerAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 {
     juce::ScopedNoDenormals noDenormals;
 
+    // Merge on-screen / QWERTY note events with MIDI arriving from the host.
+    // mergedMidi_ keeps its capacity, so injecting GUI notes stays allocation-free.
+    mergedMidi_.clear();
+    mergedMidi_.addEvents (midiMessages, 0, -1, 0);
+    keyboardState_.processNextMidiBuffer (mergedMidi_, 0, buffer.getNumSamples(), true);
+
     const auto params = bridge.read();
 
     synthesiser_.setEnvelopeParameters (params.envelope);
     synthesiser_.setFilterParameters (params.filter);
     synthesiser_.setWaveform (params.waveform);
-    synthesiser_.processBlock (buffer, midiMessages);
+    synthesiser_.processBlock (buffer, mergedMidi_);
 
     masterGain.setTargetValue (juce::Decibels::decibelsToGain (params.masterGainDb, -120.0f));
     masterGain.applyGain (buffer, buffer.getNumSamples());
